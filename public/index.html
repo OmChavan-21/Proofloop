@@ -3,18 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ProofLoop — AI that checks its own work</title>
+  <title>ProofLoop — Engine Adapter Test</title>
   <style>
     :root {
-      --bg: #0f172a;
-      --card: #1e293b;
-      --border: #334155;
-      --text: #f8fafc;
+      --bg: #0b0f19;
+      --card: #151d30;
+      --card-inner: #0d1424;
+      --border: #24324f;
+      --border-light: #33456c;
+      --text: #f1f5f9;
       --text-muted: #94a3b8;
       --primary: #38bdf8;
-      --primary-hover: #0ea5e9;
+      --primary-hover: #0284c7;
       --success: #10b981;
+      --warning: #f59e0b;
       --error: #ef4444;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     }
     * {
       box-sizing: border-box;
@@ -29,7 +33,7 @@
       padding: 2rem 1rem;
     }
     .container {
-      max-width: 900px;
+      max-width: 960px;
       margin: 0 auto;
     }
     header {
@@ -70,123 +74,472 @@
       font-size: 1.25rem;
       margin-bottom: 0.5rem;
     }
-    button {
+    .demo-bar {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .demo-btn {
+      background: #1e293b;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 0.45rem 0.85rem;
+      border-radius: 0.4rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .demo-btn:hover {
+      background: #334155;
+      border-color: var(--primary);
+    }
+    .demo-btn.active {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: var(--primary);
+      color: var(--primary);
+      font-weight: 600;
+    }
+    textarea {
+      width: 100%;
+      height: 90px;
+      background: var(--card-inner);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.95rem;
+      padding: 0.75rem;
+      resize: vertical;
+      margin-bottom: 1rem;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    .action-row {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.25rem;
+    }
+    .loop-log {
+      display: grid;
+      gap: 0.35rem;
+      margin: 0 0 1rem;
+      padding: 0.75rem 1rem;
+      min-height: 2.5rem;
+      max-height: 180px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      background: var(--card-inner);
+      color: var(--text-muted);
+      font: 0.82rem/1.5 var(--font-mono);
+      white-space: pre-wrap;
+    }
+    .verification-badge {
+      display: inline-block;
+      margin: 0 0 1rem;
+      padding: 0.4rem 0.75rem;
+      border-radius: 9999px;
+      background: rgba(245, 158, 11, 0.2);
+      color: var(--warning);
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    .verification-badge.pass { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+    .verification-badge.fail { background: rgba(239, 68, 68, 0.2); color: var(--error); }
+    .results-wrap { display: none; overflow-x: auto; margin-bottom: 1rem; }
+    .results-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .results-table th, .results-table td { padding: 0.55rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+    .results-table th { color: var(--text-muted); }
+    .result-pass { color: var(--success); font-weight: 700; }
+    .result-fail { color: var(--error); font-weight: 700; }
+    button.action {
       background: var(--primary);
-      color: #000;
+      color: #0b0f19;
       border: none;
-      padding: 0.65rem 1.2rem;
+      padding: 0.65rem 1.1rem;
       font-weight: 600;
       border-radius: 0.5rem;
       cursor: pointer;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       transition: background 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
     }
-    button:hover {
+    button.action:hover {
       background: var(--primary-hover);
     }
-    button:disabled {
-      opacity: 0.6;
+    button.action.secondary {
+      background: #1e293b;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button.action.secondary:hover {
+      background: #334155;
+    }
+    button.action:disabled {
+      opacity: 0.5;
       cursor: not-allowed;
     }
+    .metrics-bar {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      background: var(--card-inner);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+    .metric-item {
+      display: flex;
+      gap: 0.4rem;
+    }
+    .metric-label {
+      color: var(--text-muted);
+    }
+    .metric-value {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--primary);
+    }
+    .pill {
+      font-size: 0.75rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+    .pill-ok {
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--success);
+    }
+    .pill-retry {
+      background: rgba(245, 158, 11, 0.2);
+      color: var(--warning);
+    }
+    .pill-err {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--error);
+    }
     pre {
-      background: #090d16;
+      background: #060911;
       border: 1px solid var(--border);
       border-radius: 0.5rem;
       padding: 1rem;
       overflow-x: auto;
+      font-family: var(--font-mono);
       font-size: 0.85rem;
       color: #e2e8f0;
-      margin-top: 1rem;
       white-space: pre-wrap;
       word-break: break-word;
-    }
-    .status-pill {
-      display: inline-block;
-      padding: 0.2rem 0.5rem;
-      border-radius: 0.25rem;
-      font-size: 0.8rem;
-      font-weight: 600;
-      margin-left: 0.5rem;
-    }
-    .status-ok {
-      background: rgba(16, 185, 129, 0.2);
-      color: var(--success);
-    }
-    .status-err {
-      background: rgba(239, 68, 68, 0.2);
-      color: var(--error);
+      max-height: 480px;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <div class="badge-track">Meta Global AI Hackathon &bull; Muse Spark Open</div>
-      <h1>ProofLoop</h1>
-      <p class="subtitle">AI that checks its own work. Writes tests first, generates code, runs in a sandbox, and repairs failures.</p>
+      <div class="badge-track">ProofLoop &bull; Step 2: Engine Adapter</div>
+      <h1>ProofLoop Engine Adapter</h1>
+      <p class="subtitle">Strict JSON parser, outermost extractor, and one-round auto-retry powered by Meta Muse Spark Open.</p>
     </header>
 
-    <main id="app-root">
-      <div class="card" id="step1-card">
-        <h2>Step 1: API Proxy Verification</h2>
-        <p style="color: var(--text-muted); margin-bottom: 1rem;">
-          Verify that the local Node server and <code>POST /api/generate</code> forward requests to Baseten's <code>meta-models/muse-spark-open-1026</code> using the server-side environment key.
-        </p>
-        <button id="test-proxy-btn" onclick="testConnection()">Test Baseten Connection</button>
-        <span id="test-status"></span>
-        <pre id="test-output">Click "Test Baseten Connection" to verify endpoint response.</pre>
+    <main>
+      <div class="card">
+        <h2>Choose Demo Preset or Custom Request</h2>
+        <div class="demo-bar">
+          <button class="demo-btn active" onclick="selectDemo('grades')">Grade Calculator</button>
+          <button class="demo-btn" onclick="selectDemo('cleaner')">Text Cleaner</button>
+          <button class="demo-btn" onclick="selectDemo('converter')">Unit Converter</button>
+        </div>
+
+        <textarea id="prompt-input"></textarea>
+
+        <div class="action-row">
+          <button class="action" id="btn-tests" onclick="runGenerateTests()">1. Generate Tests</button>
+          <button class="action secondary" id="btn-code" onclick="runGenerateCode()">2. Generate Code</button>
+          <button class="action secondary" id="btn-repair" onclick="runTestRepair()">3. Test Repair (Simulated Failure)</button>
+          <button class="action" id="btn-full-loop" onclick="runFullLoop()">Run Full Loop</button>
+        </div>
+
+        <div id="loop-log" class="loop-log" aria-live="polite">Full-loop progress will appear here.</div>
+        <div id="verification-badge" class="verification-badge" role="status" hidden></div>
+        <div id="results-wrap" class="results-wrap">
+          <table class="results-table">
+            <thead><tr><th>Test</th><th>Input</th><th>Expected</th><th>Got</th><th>Result</th></tr></thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+
+        <div class="metrics-bar" id="metrics-bar" style="display: none;">
+          <div class="metric-item">
+            <span class="metric-label">Duration:</span>
+            <span class="metric-value" id="metric-duration">-</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Tokens:</span>
+            <span class="metric-value" id="metric-tokens">-</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Parse Status:</span>
+            <span id="metric-status">-</span>
+          </div>
+        </div>
+
+        <pre id="output-box">Select an action above to test the engine adapter.</pre>
       </div>
     </main>
   </div>
 
-  <script>
-    async function testConnection() {
-      const btn = document.getElementById('test-proxy-btn');
-      const status = document.getElementById('test-status');
-      const output = document.getElementById('test-output');
+  <script type="module">
+    import { generateTests, generateCode, repairCode } from './js/engine.js';
+    import { runTests } from './sandbox.js';
 
-      btn.disabled = true;
-      status.innerHTML = '<span class="status-pill" style="background: rgba(56,189,248,0.2); color: var(--primary);">Contacting Baseten...</span>';
-      output.textContent = 'Sending test request to /api/generate with model: meta-models/muse-spark-open-1026...';
+    const MAX_ROUNDS = 3;
 
-      try {
-        const response = await fetch('/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: [
-              {
-                role: 'user',
-                content: 'Respond with exactly the single word "VERIFIED" and nothing else.'
-              }
-            ],
-            temperature: 0.1,
-            max_tokens: 1024
-          })
-        });
+    const DEMOS = {
+      grades: 'Calculate letter grades (A: 90+, B: 80-89, C: 70-79, D: 60-69, F: <60) and class average from a list of numerical marks.',
+      cleaner: 'Clean and format a list of names: trim whitespace, collapse multiple spaces into one, and capitalize each name in title-case.',
+      converter: 'Convert temperature between Celsius and Fahrenheit and length between meters and feet, with validation for non-numeric input.'
+    };
 
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || 'Server returned status ' + response.status);
-        }
+    let latestTests = null;
+    let latestCode = null;
 
-        status.innerHTML = '<span class="status-pill status-ok">Connected</span>';
-        output.textContent = JSON.stringify({
-          status: 'SUCCESS',
-          http_status: response.status,
-          model: 'meta-models/muse-spark-open-1026',
-          has_content: Boolean(data.content),
-          content: data.content,
-          reasoning_length: data.reasoning ? data.reasoning.length : 0,
-          usage: data.usage
-        }, null, 2);
-      } catch (err) {
-        status.innerHTML = '<span class="status-pill status-err">Failed</span>';
-        output.textContent = 'Error: ' + err.message;
-      } finally {
-        btn.disabled = false;
+    window.selectDemo = function(key) {
+      document.querySelectorAll('.demo-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('prompt-input').value = DEMOS[key];
+    };
+
+    // Initialize with first demo
+    document.getElementById('prompt-input').value = DEMOS.grades;
+
+    function setBusy(isBusy, message) {
+      document.querySelectorAll('button.action').forEach(b => b.disabled = isBusy);
+      if (isBusy) {
+        document.getElementById('output-box').textContent = message || 'Processing with Muse Spark Open...';
       }
     }
+
+    function updateMetrics(result) {
+      const bar = document.getElementById('metrics-bar');
+      bar.style.display = 'flex';
+
+      document.getElementById('metric-duration').textContent = `${result.duration_ms}ms`;
+
+      const usage = result.usage;
+      if (usage) {
+        document.getElementById('metric-tokens').textContent =
+          `prompt: ${usage.prompt_tokens ?? '?'}, completion: ${usage.completion_tokens ?? '?'}, total: ${usage.total_tokens ?? '?'}`;
+      } else {
+        document.getElementById('metric-tokens').textContent = 'N/A';
+      }
+
+      const statusEl = document.getElementById('metric-status');
+      if (result.retried) {
+        statusEl.innerHTML = '<span class="pill pill-retry">Parsed via 1x Retry</span>';
+      } else {
+        statusEl.innerHTML = '<span class="pill pill-ok">Valid JSON (1st attempt)</span>';
+      }
+    }
+
+    window.runGenerateTests = async function() {
+      const prompt = document.getElementById('prompt-input').value.trim();
+      if (!prompt) return alert('Please enter a tool description.');
+
+      setBusy(true, 'Calling Muse Spark Open to generate 5-8 test cases...');
+      try {
+        const res = await generateTests(prompt);
+        latestTests = Object.freeze(res.tests.map(test => Object.freeze({ ...test })));
+        updateMetrics(res);
+        document.getElementById('output-box').textContent = JSON.stringify(latestTests, null, 2);
+      } catch (err) {
+        document.getElementById('output-box').textContent = `Error: ${err.message}`;
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    window.runGenerateCode = async function() {
+      const prompt = document.getElementById('prompt-input').value.trim();
+      if (!prompt) return alert('Please enter a tool description.');
+
+      // If no tests yet, generate synthetic fallback tests for demo
+      const testsToUse = latestTests || [
+        { name: "Standard case", input: [95, 82, 74], expected: { grades: ["A", "B", "C"], average: 83.67 } },
+        { name: "Edge case - empty marks", input: [], expected: { grades: [], average: 0 } }
+      ];
+
+      setBusy(true, 'Calling Muse Spark Open to generate pure solve_js and ui_html...');
+      try {
+        const res = await generateCode(prompt, testsToUse);
+        latestCode = { solve_js: res.solve_js, ui_html: res.ui_html };
+        updateMetrics(res);
+        document.getElementById('output-box').textContent = JSON.stringify({
+          solve_js: res.solve_js,
+          ui_html: res.ui_html
+        }, null, 2);
+      } catch (err) {
+        document.getElementById('output-box').textContent = `Error: ${err.message}`;
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    window.runTestRepair = async function() {
+      const prompt = document.getElementById('prompt-input').value.trim();
+      if (!prompt) return alert('Please enter a tool description.');
+
+      // Use current code or mock buggy code
+      const currentCode = latestCode || {
+        solve_js: "function solve(marks) { return { grades: ['A'], average: 100 }; }",
+        ui_html: "<div><button onclick='alert(solve([90]))'>Run</button></div>"
+      };
+
+      const mockFailures = [
+        {
+          name: "Letter grade C test",
+          input: [75],
+          expected: { grades: ["C"], average: 75 },
+          got: { grades: ["A"], average: 100 },
+          error: "Mismatch at grades[0]: expected 'C', got 'A'"
+        },
+        {
+          name: "Empty marks edge case",
+          input: [],
+          expected: { grades: [], average: 0 },
+          got: { grades: ["A"], average: 100 },
+          error: "Mismatch at average: expected 0, got 100"
+        }
+      ];
+
+      setBusy(true, 'Calling Muse Spark Open to repair code against failing test cases...');
+      try {
+        const res = await repairCode(prompt, currentCode, mockFailures);
+        latestCode = { solve_js: res.solve_js, ui_html: res.ui_html };
+        updateMetrics(res);
+        document.getElementById('output-box').textContent = JSON.stringify({
+          repaired_solve_js: res.solve_js,
+          repaired_ui_html: res.ui_html
+        }, null, 2);
+      } catch (err) {
+        document.getElementById('output-box').textContent = `Error: ${err.message}`;
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    const elapsedSeconds = start => `${((performance.now() - start) / 1000).toFixed(1)}s`;
+    const logLoopEvent = message => {
+      const log = document.getElementById('loop-log');
+      if (log.textContent === 'Full-loop progress will appear here.') log.textContent = '';
+      const line = document.createElement('div');
+      line.textContent = message;
+      log.append(line);
+      log.scrollTop = log.scrollHeight;
+    };
+    const formatResultValue = value => {
+      if (value === undefined) return 'undefined';
+      try { return JSON.stringify(value); }
+      catch { return String(value); }
+    };
+    function showSandboxResults(results) {
+      const body = document.getElementById('results-body');
+      const wrap = document.getElementById('results-wrap');
+      body.replaceChildren(...results.map(result => {
+        const row = document.createElement('tr');
+        const values = [result.name, formatResultValue(result.input), formatResultValue(result.expected), result.error || formatResultValue(result.got), result.passed ? 'PASS' : `FAIL${result.error ? ` — ${result.error}` : ''}`];
+        values.forEach((value, index) => {
+          const cell = document.createElement('td');
+          cell.textContent = value;
+          if (index === 4) cell.className = result.passed ? 'result-pass' : 'result-fail';
+          row.append(cell);
+        });
+        return row;
+      }));
+      wrap.style.display = results.length ? 'block' : 'none';
+    }
+    function setVerificationBadge(results) {
+      const passed = results.filter(result => result.passed).length;
+      const total = results.length;
+      const badge = document.getElementById('verification-badge');
+      badge.textContent = passed === total
+        ? `Verified: ${passed}/${total} tests passed`
+        : `Not fully verified: ${passed}/${total} passed`;
+      badge.className = `verification-badge ${passed === total ? 'pass' : 'fail'}`;
+      badge.hidden = false;
+    }
+
+    window.runFullLoop = async function() {
+      const prompt = document.getElementById('prompt-input').value.trim();
+      if (!prompt) return alert('Please enter a tool description.');
+
+      const log = document.getElementById('loop-log');
+      log.replaceChildren();
+      document.getElementById('verification-badge').hidden = true;
+      document.getElementById('results-wrap').style.display = 'none';
+      setBusy(true, 'Starting the full generate, test, and repair loop...');
+      let finalResults = null;
+      const loopStart = performance.now();
+
+      try {
+        let requestStart = performance.now();
+        const testResponse = await generateTests(prompt);
+        // Freeze this one oracle suite and reuse it through every round.
+        const originalTests = Object.freeze(testResponse.tests.map(test => Object.freeze({ ...test })));
+        latestTests = originalTests;
+        logLoopEvent(`Tests generated (${originalTests.length} tests, ${elapsedSeconds(requestStart)})`);
+        updateMetrics(testResponse);
+
+        requestStart = performance.now();
+        const codeResponse = await generateCode(prompt, originalTests);
+        latestCode = { solve_js: codeResponse.solve_js, ui_html: codeResponse.ui_html };
+        logLoopEvent(`Code generated (${elapsedSeconds(requestStart)})`);
+        updateMetrics(codeResponse);
+
+        finalResults = [];
+        for (let round = 0; round <= MAX_ROUNDS; round++) {
+          const sandboxStart = performance.now();
+          finalResults = await runTests(latestCode.solve_js, originalTests);
+          const passedCount = finalResults.filter(result => result.passed).length;
+          logLoopEvent(`Round ${round}: ${passedCount}/${originalTests.length} passed (${elapsedSeconds(sandboxStart)})`);
+          showSandboxResults(finalResults);
+
+          if (passedCount === originalTests.length || round === MAX_ROUNDS) break;
+
+          const failures = finalResults.filter(result => !result.passed).map(result => ({
+            name: result.name,
+            input: result.input,
+            expected: result.expected,
+            got: result.got,
+            error: result.error
+          }));
+          requestStart = performance.now();
+          const repairResponse = await repairCode(prompt, latestCode, failures);
+          latestCode = { solve_js: repairResponse.solve_js, ui_html: latestCode.ui_html };
+          logLoopEvent(`Repair ${round + 1} (${elapsedSeconds(requestStart)})`);
+          updateMetrics(repairResponse);
+        }
+
+        setVerificationBadge(finalResults);
+        document.getElementById('output-box').textContent = JSON.stringify({
+          solve_js: latestCode.solve_js,
+          ui_html: latestCode.ui_html
+        }, null, 2);
+      } catch (err) {
+        logLoopEvent(`Loop stopped after ${elapsedSeconds(loopStart)}: ${err.message}`);
+        if (finalResults) setVerificationBadge(finalResults);
+        document.getElementById('output-box').textContent = `Error: ${err.message}`;
+      } finally {
+        setBusy(false);
+      }
+    };
   </script>
 </body>
 </html>
