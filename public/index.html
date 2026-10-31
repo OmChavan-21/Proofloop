@@ -100,6 +100,15 @@
       color: var(--primary);
       font-weight: 600;
     }
+    .stress-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      margin: 0.15rem 0 1rem;
+      color: var(--warning);
+      font-size: 0.9rem;
+    }
+    .stress-toggle input { width: 1rem; height: 1rem; accent-color: var(--warning); }
     textarea {
       width: 100%;
       height: 90px;
@@ -256,14 +265,20 @@
           <button class="demo-btn active" onclick="selectDemo('grades')">Grade Calculator</button>
           <button class="demo-btn" onclick="selectDemo('cleaner')">Text Cleaner</button>
           <button class="demo-btn" onclick="selectDemo('converter')">Unit Converter</button>
+          <button class="demo-btn" onclick="selectDemo('shipping')">Shipping Cost</button>
+          <button class="demo-btn" onclick="selectDemo('discount')">Discount Cart</button>
+          <button class="demo-btn" onclick="selectDemo('leap')">Leap Year and Days</button>
+          <button class="demo-btn" onclick="selectDemo('rupee')">Rupee Format</button>
+          <button class="demo-btn" onclick="selectDemo('business-days')">Business Days</button>
+          <button class="demo-btn" onclick="selectDemo('time-slots')">Merge Time Slots</button>
         </div>
 
         <textarea id="prompt-input"></textarea>
+        <label class="stress-toggle"><input id="stress-test" type="checkbox"> Stress test: inject a bug on purpose</label>
 
         <div class="action-row">
           <button class="action" id="btn-tests" onclick="runGenerateTests()">1. Generate Tests</button>
           <button class="action secondary" id="btn-code" onclick="runGenerateCode()">2. Generate Code</button>
-          <button class="action secondary" id="btn-repair" onclick="runTestRepair()">3. Test Repair (Simulated Failure)</button>
           <button class="action" id="btn-full-loop" onclick="runFullLoop()">Run Full Loop</button>
         </div>
 
@@ -277,6 +292,10 @@
         </div>
 
         <div class="metrics-bar" id="metrics-bar" style="display: none;">
+          <div class="metric-item">
+            <span class="metric-label">Provider:</span>
+            <span class="metric-value" id="metric-provider">-</span>
+          </div>
           <div class="metric-item">
             <span class="metric-label">Duration:</span>
             <span class="metric-value" id="metric-duration">-</span>
@@ -305,7 +324,13 @@
     const DEMOS = {
       grades: 'Calculate letter grades (A: 90+, B: 80-89, C: 70-79, D: 60-69, F: <60) and class average from a list of numerical marks.',
       cleaner: 'Clean and format a list of names: trim whitespace, collapse multiple spaces into one, and capitalize each name in title-case.',
-      converter: 'Convert temperature between Celsius and Fahrenheit and length between meters and feet, with validation for non-numeric input.'
+      converter: 'Convert temperature between Celsius and Fahrenheit and length between meters and feet, with validation for non-numeric input.',
+      shipping: 'Calculate shipping cost from weight in kg: first 1 kg costs 50, each extra started 0.5 kg costs 20, over 20 kg is not allowed and returns an error message. Round to 2 decimals.',
+      discount: 'Given a list of items with price and quantity, apply 10% off if subtotal is 1000 or more, then add 18% tax on the discounted amount. Return subtotal, discount, tax and total, rounded to 2 decimals.',
+      leap: 'Given a year and month number (1-12), return the number of days in that month, correct for leap years. Invalid month returns an error message.',
+      rupee: 'Format a number as Indian rupees: prefix ₹, Indian digit grouping (12,34,567.50), always 2 decimals, negative numbers get a leading minus before the ₹.',
+      'business-days': 'Count business days (Mon-Fri) between two dates in YYYY-MM-DD format, including the start date and excluding the end date. If end is before start, return an error message.',
+      'time-slots': 'Given a list of meeting slots as [start,end] in minutes, merge overlapping or touching slots and return them sorted. Ignore invalid slots where end <= start.'
     };
 
     let latestTests = null;
@@ -323,13 +348,18 @@
     function setBusy(isBusy, message) {
       document.querySelectorAll('button.action').forEach(b => b.disabled = isBusy);
       if (isBusy) {
-        document.getElementById('output-box').textContent = message || 'Processing with Muse Spark Open...';
+        document.getElementById('output-box').textContent = message || 'Processing with model...';
       }
     }
 
     function updateMetrics(result) {
       const bar = document.getElementById('metrics-bar');
       bar.style.display = 'flex';
+
+      const providerEl = document.getElementById('metric-provider');
+      if (providerEl) {
+        providerEl.textContent = result.provider_display || (result.provider ? `${result.provider}: ${result.model}` : 'Baseten Muse Spark Open');
+      }
 
       document.getElementById('metric-duration').textContent = `${result.duration_ms}ms`;
 
@@ -353,7 +383,7 @@
       const prompt = document.getElementById('prompt-input').value.trim();
       if (!prompt) return alert('Please enter a tool description.');
 
-      setBusy(true, 'Calling Muse Spark Open to generate 5-8 test cases...');
+      setBusy(true, 'Calling model to generate 5-8 test cases...');
       try {
         const res = await generateTests(prompt);
         latestTests = Object.freeze(res.tests.map(test => Object.freeze({ ...test })));
@@ -376,7 +406,7 @@
         { name: "Edge case - empty marks", input: [], expected: { grades: [], average: 0 } }
       ];
 
-      setBusy(true, 'Calling Muse Spark Open to generate pure solve_js and ui_html...');
+      setBusy(true, 'Calling model to generate pure solve_js and ui_html...');
       try {
         const res = await generateCode(prompt, testsToUse);
         latestCode = { solve_js: res.solve_js, ui_html: res.ui_html };
@@ -384,49 +414,6 @@
         document.getElementById('output-box').textContent = JSON.stringify({
           solve_js: res.solve_js,
           ui_html: res.ui_html
-        }, null, 2);
-      } catch (err) {
-        document.getElementById('output-box').textContent = `Error: ${err.message}`;
-      } finally {
-        setBusy(false);
-      }
-    };
-
-    window.runTestRepair = async function() {
-      const prompt = document.getElementById('prompt-input').value.trim();
-      if (!prompt) return alert('Please enter a tool description.');
-
-      // Use current code or mock buggy code
-      const currentCode = latestCode || {
-        solve_js: "function solve(marks) { return { grades: ['A'], average: 100 }; }",
-        ui_html: "<div><button onclick='alert(solve([90]))'>Run</button></div>"
-      };
-
-      const mockFailures = [
-        {
-          name: "Letter grade C test",
-          input: [75],
-          expected: { grades: ["C"], average: 75 },
-          got: { grades: ["A"], average: 100 },
-          error: "Mismatch at grades[0]: expected 'C', got 'A'"
-        },
-        {
-          name: "Empty marks edge case",
-          input: [],
-          expected: { grades: [], average: 0 },
-          got: { grades: ["A"], average: 100 },
-          error: "Mismatch at average: expected 0, got 100"
-        }
-      ];
-
-      setBusy(true, 'Calling Muse Spark Open to repair code against failing test cases...');
-      try {
-        const res = await repairCode(prompt, currentCode, mockFailures);
-        latestCode = { solve_js: res.solve_js, ui_html: res.ui_html };
-        updateMetrics(res);
-        document.getElementById('output-box').textContent = JSON.stringify({
-          repaired_solve_js: res.solve_js,
-          repaired_ui_html: res.ui_html
         }, null, 2);
       } catch (err) {
         document.getElementById('output-box').textContent = `Error: ${err.message}`;
@@ -449,6 +436,104 @@
       try { return JSON.stringify(value); }
       catch { return String(value); }
     };
+    const completionTokenCount = result => result?.usage?.completion_tokens ?? 'unknown';
+    function solveBodyRange(solveCode) {
+      const declaration = /\bfunction\s+solve\s*\([^)]*\)\s*\{/.exec(solveCode);
+      if (!declaration) return null;
+      const openBrace = declaration.index + declaration[0].lastIndexOf('{');
+      let depth = 1;
+      let quote = null;
+      let escaped = false;
+      let lineComment = false;
+      let blockComment = false;
+
+      for (let i = openBrace + 1; i < solveCode.length; i++) {
+        const char = solveCode[i];
+        const next = solveCode[i + 1];
+        if (lineComment) {
+          if (char === '\n') lineComment = false;
+          continue;
+        }
+        if (blockComment) {
+          if (char === '*' && next === '/') { blockComment = false; i++; }
+          continue;
+        }
+        if (quote) {
+          if (escaped) escaped = false;
+          else if (char === '\\') escaped = true;
+          else if (char === quote) quote = null;
+          continue;
+        }
+        if (char === '/' && next === '/') { lineComment = true; i++; continue; }
+        if (char === '/' && next === '*') { blockComment = true; i++; continue; }
+        if (char === '"' || char === "'" || char === '`') { quote = char; continue; }
+        if (char === '{') depth++;
+        if (char === '}' && --depth === 0) return { start: openBrace + 1, end: i };
+      }
+      return null;
+    }
+
+    function injectStressTestMutation(solveCode) {
+      const body = solveBodyRange(solveCode);
+      if (!body) return null;
+      const mutations = [
+        { from: '>= ', to: '> ' },
+        { from: '<= ', to: '< ' },
+        { from: 'Math.round', to: 'Math.floor' },
+        { from: '=== 0', to: '=== 1' }
+      ];
+
+      for (const mutation of mutations) {
+        const bodyText = solveCode.slice(body.start, body.end);
+        const occurrence = firstCodeOccurrence(bodyText, mutation.from);
+        if (occurrence === -1) continue;
+
+        const sourceIndex = body.start + occurrence;
+        const mutatedCode = solveCode.slice(0, sourceIndex) + mutation.to + solveCode.slice(sourceIndex + mutation.from.length);
+        try {
+          new Function(mutatedCode);
+        } catch {
+          continue;
+        }
+
+        const operand = mutation.from.endsWith(' ')
+          ? bodyText.slice(occurrence + mutation.from.length).match(/^[^\s;,)]+/)?.[0]
+          : '';
+        const before = `${mutation.from.trim()}${operand ? ` ${operand}` : ''}`;
+        const after = `${mutation.to.trim()}${operand ? ` ${operand}` : ''}`;
+        return { solveCode: mutatedCode, description: `changed "${before}" to "${after}"` };
+      }
+      return null;
+    }
+    function firstCodeOccurrence(source, target) {
+      let quote = null;
+      let escaped = false;
+      let lineComment = false;
+      let blockComment = false;
+      for (let i = 0; i < source.length; i++) {
+        const char = source[i];
+        const next = source[i + 1];
+        if (lineComment) {
+          if (char === '\n') lineComment = false;
+          continue;
+        }
+        if (blockComment) {
+          if (char === '*' && next === '/') { blockComment = false; i++; }
+          continue;
+        }
+        if (quote) {
+          if (escaped) escaped = false;
+          else if (char === '\\') escaped = true;
+          else if (char === quote) quote = null;
+          continue;
+        }
+        if (char === '/' && next === '/') { lineComment = true; i++; continue; }
+        if (char === '/' && next === '*') { blockComment = true; i++; continue; }
+        if (char === '"' || char === "'" || char === '`') { quote = char; continue; }
+        if (source.startsWith(target, i)) return i;
+      }
+      return -1;
+    }
     function showSandboxResults(results) {
       const body = document.getElementById('results-body');
       const wrap = document.getElementById('results-wrap');
@@ -479,6 +564,7 @@
     window.runFullLoop = async function() {
       const prompt = document.getElementById('prompt-input').value.trim();
       if (!prompt) return alert('Please enter a tool description.');
+      const stressTestEnabled = document.getElementById('stress-test').checked;
 
       const log = document.getElementById('loop-log');
       log.replaceChildren();
@@ -494,36 +580,63 @@
         // Freeze this one oracle suite and reuse it through every round.
         const originalTests = Object.freeze(testResponse.tests.map(test => Object.freeze({ ...test })));
         latestTests = originalTests;
-        logLoopEvent(`Tests generated (${originalTests.length} tests, ${elapsedSeconds(requestStart)})`);
+        const testProvider = testResponse.provider_display || (testResponse.provider === 'meta' ? `Meta ${testResponse.model || 'muse-spark-1.3'}` : 'Baseten Muse Spark Open');
+        logLoopEvent(`Tests by ${testProvider} (${originalTests.length} tests, ${elapsedSeconds(requestStart)}, ${completionTokenCount(testResponse)} completion tokens)`);
         updateMetrics(testResponse);
 
         requestStart = performance.now();
         const codeResponse = await generateCode(prompt, originalTests);
         latestCode = { solve_js: codeResponse.solve_js, ui_html: codeResponse.ui_html };
-        logLoopEvent(`Code generated (${elapsedSeconds(requestStart)})`);
+        const codeProvider = codeResponse.provider_display || (codeResponse.provider === 'meta' ? `Meta ${codeResponse.model || 'muse-spark-1.3'}` : 'Baseten Muse Spark Open');
+        logLoopEvent(`Code by ${codeProvider} (${elapsedSeconds(requestStart)}, ${completionTokenCount(codeResponse)} completion tokens)`);
+        let stressMutationApplied = false;
+        if (stressTestEnabled) {
+          const mutation = injectStressTestMutation(latestCode.solve_js);
+          if (mutation) {
+            latestCode.solve_js = mutation.solveCode;
+            stressMutationApplied = true;
+            logLoopEvent(`STRESS TEST: bug injected on purpose (${mutation.description})`);
+          } else {
+            logLoopEvent('STRESS TEST: no parse-safe mutation found; code left unchanged');
+          }
+        }
         updateMetrics(codeResponse);
 
         finalResults = [];
+        let priorFailureCount = null;
         for (let round = 0; round <= MAX_ROUNDS; round++) {
           const sandboxStart = performance.now();
           finalResults = await runTests(latestCode.solve_js, originalTests);
           const passedCount = finalResults.filter(result => result.passed).length;
+          const failedResults = finalResults.filter(result => !result.passed);
           logLoopEvent(`Round ${round}: ${passedCount}/${originalTests.length} passed (${elapsedSeconds(sandboxStart)})`);
+          if (round === 0 && stressTestEnabled && stressMutationApplied && passedCount === originalTests.length) {
+            logLoopEvent('STRESS TEST: mutation survived - the tests did not catch it');
+          }
+          if (priorFailureCount !== null) {
+            logLoopEvent(`What changed: Failing ${priorFailureCount} -> ${failedResults.length}`);
+            priorFailureCount = null;
+          }
+          for (const failure of failedResults.slice(0, 3)) {
+            logLoopEvent(`Fail: ${failure.name} | input ${formatResultValue(failure.input)} | expected ${formatResultValue(failure.expected)} | got ${formatResultValue(failure.got)}`);
+          }
           showSandboxResults(finalResults);
 
           if (passedCount === originalTests.length || round === MAX_ROUNDS) break;
 
-          const failures = finalResults.filter(result => !result.passed).map(result => ({
+          const failures = failedResults.map(result => ({
             name: result.name,
             input: result.input,
             expected: result.expected,
             got: result.got,
             error: result.error
           }));
+          priorFailureCount = failures.length;
           requestStart = performance.now();
           const repairResponse = await repairCode(prompt, latestCode, failures);
           latestCode = { solve_js: repairResponse.solve_js, ui_html: latestCode.ui_html };
-          logLoopEvent(`Repair ${round + 1} (${elapsedSeconds(requestStart)})`);
+          const repairProvider = repairResponse.provider_display || (repairResponse.provider === 'meta' ? `Meta ${repairResponse.model || 'muse-spark-1.3'}` : 'Baseten Muse Spark Open');
+          logLoopEvent(`Repair ${round + 1} by ${repairProvider} (${elapsedSeconds(requestStart)}, ${completionTokenCount(repairResponse)} completion tokens)`);
           updateMetrics(repairResponse);
         }
 

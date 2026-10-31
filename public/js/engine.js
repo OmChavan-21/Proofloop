@@ -91,7 +91,9 @@ async function callProxyWithJSON({ messages, options = {} }) {
     messages,
     temperature,
     max_tokens,
-    timeout
+    timeout,
+    step: options.step,
+    provider: options.provider
   };
 
   const startTime = performance.now();
@@ -132,7 +134,12 @@ async function callProxyWithJSON({ messages, options = {} }) {
       data: parsedData,
       usage: totalUsage,
       duration_ms: totalElapsed,
-      retried: false
+      retried: false,
+      provider: responseJson.provider,
+      model: responseJson.model,
+      provider_display: responseJson.provider_display,
+      fallback: responseJson.fallback,
+      fallback_reason: responseJson.fallback_reason
     };
   } catch (parseError) {
     // Retry once with a clear reminder to return valid JSON
@@ -158,7 +165,9 @@ async function callProxyWithJSON({ messages, options = {} }) {
           messages: retryMessages,
           temperature,
           max_tokens,
-          timeout
+          timeout,
+          step: options.step,
+          provider: options.provider
         }),
         signal: AbortSignal.timeout(transportTimeout)
       });
@@ -185,7 +194,12 @@ async function callProxyWithJSON({ messages, options = {} }) {
         data: retryParsed,
         usage: retryJson.usage || totalUsage,
         duration_ms: totalElapsed,
-        retried: true
+        retried: true,
+        provider: retryJson.provider || responseJson.provider,
+        model: retryJson.model || responseJson.model,
+        provider_display: retryJson.provider_display || responseJson.provider_display,
+        fallback: retryJson.fallback ?? responseJson.fallback,
+        fallback_reason: retryJson.fallback_reason ?? responseJson.fallback_reason
       };
     } catch (secondError) {
       throw new Error(
@@ -236,7 +250,7 @@ Do not write markdown fences, code blocks, or explanatory commentary. Return raw
     { role: 'user', content: userPrompt }
   ];
 
-  const result = await callProxyWithJSON({ messages, options });
+  const result = await callProxyWithJSON({ messages, options: { ...options, step: 'tests' } });
   const data = result.data;
 
   if (!data || !Array.isArray(data.tests) || data.tests.length === 0) {
@@ -254,7 +268,12 @@ Do not write markdown fences, code blocks, or explanatory commentary. Return raw
     tests: data.tests,
     usage: result.usage,
     duration_ms: result.duration_ms,
-    retried: result.retried
+    retried: result.retried,
+    provider: result.provider,
+    model: result.model,
+    provider_display: result.provider_display,
+    fallback: result.fallback,
+    fallback_reason: result.fallback_reason
   };
 }
 
@@ -279,6 +298,7 @@ Rules for solve_js:
 2. Write solve(input) with exactly one parameter, no handling of the arguments object, no guessing input formats.
 3. Pure and deterministic: NO network calls (fetch/ajax), NO DOM access, NO window/document globals, and NO external libraries.
 4. The one input parameter receives each test's input value as-is; return values must match test.expected.
+Keep solve() compact. No comments, no explanations, no extra helper UI logic beyond what is needed.
 
 Rules for ui_html:
 1. Provide a clean, modern HTML component (a <div> container) that allows the user to interactively use this tool in a web browser.
@@ -305,7 +325,7 @@ Write the pure solve function and the companion ui_html.`;
     { role: 'user', content: userPrompt }
   ];
 
-  const result = await callProxyWithJSON({ messages, options });
+  const result = await callProxyWithJSON({ messages, options: { ...options, step: 'code' } });
   const data = result.data;
 
   if (!data || typeof data.solve_js !== 'string' || typeof data.ui_html !== 'string') {
@@ -317,7 +337,12 @@ Write the pure solve function and the companion ui_html.`;
     ui_html: data.ui_html.trim(),
     usage: result.usage,
     duration_ms: result.duration_ms,
-    retried: result.retried
+    retried: result.retried,
+    provider: result.provider,
+    model: result.model,
+    provider_display: result.provider_display,
+    fallback: result.fallback,
+    fallback_reason: result.fallback_reason
   };
 }
 
@@ -366,7 +391,7 @@ Repair only the solve function so all tests pass. Keep the supplied tests unchan
     { role: 'user', content: userPrompt }
   ];
 
-  const result = await callProxyWithJSON({ messages, options: { ...options, strictJSON: true } });
+  const result = await callProxyWithJSON({ messages, options: { ...options, step: 'repair', strictJSON: true } });
   const data = result.data;
 
   if (!data || Object.keys(data).length !== 1 || typeof data.repaired_solve_js !== 'string') {
@@ -378,6 +403,11 @@ Repair only the solve function so all tests pass. Keep the supplied tests unchan
     ui_html: currentCode.ui_html,
     usage: result.usage,
     duration_ms: result.duration_ms,
-    retried: result.retried
+    retried: result.retried,
+    provider: result.provider,
+    model: result.model,
+    provider_display: result.provider_display,
+    fallback: result.fallback,
+    fallback_reason: result.fallback_reason
   };
 }
